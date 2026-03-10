@@ -41,38 +41,67 @@ jobs:
         Write-Host "📄 Проверка файла:"
         Get-ChildItem SmartSteamEmu -Recurse -Filter "SteamGameCoordinator_Redirect.h" | Select-Object FullName
     
-    - name: Find solution file
+    - name: Find and analyze solution
       run: |
         Write-Host "🔍 Поиск .sln файла..."
-        Get-ChildItem SmartSteamEmu -Recurse -Filter "*.sln" | Select-Object FullName, Name
+        $slnFile = Get-ChildItem SmartSteamEmu -Recurse -Filter "*.sln" | Select-Object -First 1
+        
+        if ($slnFile) {
+          Write-Host "✅ Найден: $($slnFile.FullName)"
+          Write-Host ""
+          Write-Host "� Содержимое .sln файла:"
+          Get-Content $slnFile.FullName | Select-String "Release|Debug|Win32|x64|x86|Platform" | ForEach-Object { Write-Host $_ }
+        } else {
+          Write-Host "❌ .sln файл не найден!"
+        }
         
         Write-Host ""
         Write-Host "🔍 Поиск .vcxproj файлов..."
-        Get-ChildItem SmartSteamEmu -Recurse -Filter "*.vcxproj" | Select-Object FullName, Name
+        Get-ChildItem SmartSteamEmu -Recurse -Filter "*.vcxproj" | ForEach-Object {
+          Write-Host "  - $($_.FullName)"
+        }
     
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
     
-    - name: Build x86
+    - name: Build
       run: |
         $slnFile = Get-ChildItem SmartSteamEmu -Recurse -Filter "*.sln" | Select-Object -First 1
-        if ($slnFile) {
-          Write-Host "✅ Найден: $($slnFile.FullName)"
-          msbuild $slnFile.FullName /p:Configuration=Release /p:Platform=Win32 /m
-        } else {
+        
+        if (-not $slnFile) {
           Write-Host "❌ .sln файл не найден!"
           exit 1
         }
-    
-    - name: Build x64
-      run: |
-        $slnFile = Get-ChildItem SmartSteamEmu -Recurse -Filter "*.sln" | Select-Object -First 1
-        if ($slnFile) {
-          Write-Host "✅ Найден: $($slnFile.FullName)"
-          msbuild $slnFile.FullName /p:Configuration=Release /p:Platform=x64 /m
-        } else {
-          Write-Host "❌ .sln файл не найден!"
-          exit 1
+        
+        Write-Host "🔨 Компиляция: $($slnFile.FullName)"
+        Write-Host ""
+        
+        # Пробуем разные конфигурации
+        $configs = @(
+          @{Config="Release"; Platform="Win32"},
+          @{Config="Release"; Platform="x86"},
+          @{Config="Release"; Platform="Any CPU"}
+        )
+        
+        $success = $false
+        foreach ($cfg in $configs) {
+          Write-Host "⚙️ Попытка: Configuration=$($cfg.Config), Platform=$($cfg.Platform)"
+          try {
+            msbuild $slnFile.FullName /p:Configuration=$($cfg.Config) /p:Platform=$($cfg.Platform) /m /v:minimal
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "✅ Успешно!"
+              $success = $true
+              break
+            }
+          } catch {
+            Write-Host "❌ Не удалось"
+          }
+          Write-Host ""
+        }
+        
+        if (-not $success) {
+          Write-Host "⚠️ Пробуем без указания Platform..."
+          msbuild $slnFile.FullName /p:Configuration=Release /m /v:minimal
         }
     
     - name: Package
