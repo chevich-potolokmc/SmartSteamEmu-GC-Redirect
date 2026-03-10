@@ -1,9 +1,7 @@
-name: Build SmartSteamEmu with GC Redirect
+name: Build SmartSteamEmu
 
 on:
   push:
-    branches: [ main, master ]
-  pull_request:
     branches: [ main, master ]
   workflow_dispatch:
 
@@ -12,37 +10,19 @@ jobs:
     runs-on: windows-latest
     
     steps:
-    - name: Checkout SmartSteamEmu
-      uses: actions/checkout@v3
-      with:
-        repository: MAXBURAOT/SmartSteamEmu
-        path: SmartSteamEmu
+    - name: Checkout
+      uses: actions/checkout@v4
     
-    - name: Checkout patch
-      uses: actions/checkout@v3
-      with:
-        path: patch
-    
-    - name: Apply patch
-      shell: powershell
+    - name: Clone SmartSteamEmu
       run: |
-        Write-Host "Applying GC Redirect patch..."
-        Copy-Item "patch/SteamGameCoordinator_Redirect.h" "SmartSteamEmu/src/" -Force
-        
-        # Применяем патч к SteamGameCoordinator.cpp
-        $file = "SmartSteamEmu/src/SteamGameCoordinator.cpp"
-        $content = Get-Content $file -Raw
-        
-        # Добавляем include
-        if ($content -notmatch "SteamGameCoordinator_Redirect.h") {
-            $content = $content -replace '(#include.*\n)', "`$1#include `"SteamGameCoordinator_Redirect.h`"`n"
-            Set-Content $file $content -NoNewline
-        }
-        
-        Write-Host "Patch applied successfully"
+        git clone https://github.com/MAXBURAOT/SmartSteamEmu.git
+    
+    - name: Copy patch
+      run: |
+        Copy-Item "SteamGameCoordinator_Redirect.h" "SmartSteamEmu/src/" -Force
     
     - name: Setup MSBuild
-      uses: microsoft/setup-msbuild@v1.1
+      uses: microsoft/setup-msbuild@v2
     
     - name: Build x86
       working-directory: SmartSteamEmu
@@ -52,51 +32,16 @@ jobs:
       working-directory: SmartSteamEmu
       run: msbuild SmartSteamEmu.sln /p:Configuration=Release /p:Platform=x64 /m
     
-    - name: Package artifacts
-      shell: powershell
+    - name: Package
       run: |
         New-Item -ItemType Directory -Path "output" -Force
-        Copy-Item "SmartSteamEmu/Release/SmartSteamEmu.dll" "output/" -Force
-        Copy-Item "SmartSteamEmu/x64/Release/SmartSteamEmu64.dll" "output/" -Force
-        Copy-Item "patch/SmartSteamEmu.ini" "output/" -Force -ErrorAction SilentlyContinue
-        
-        # Создаём README
-        @"
-        SmartSteamEmu with GC Redirect
-        ================================
-        
-        Compiled: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
-        
-        Files:
-        - SmartSteamEmu.dll (32-bit)
-        - SmartSteamEmu64.dll (64-bit)
-        
-        Installation:
-        1. Backup original DLLs
-        2. Copy new DLLs to game folder
-        3. Edit SmartSteamEmu.ini:
-           [GameCoordinator]
-           EnableRedirect = 1
-           ServerIP = 127.0.0.1
-           ServerPort = 27016
-        
-        "@ | Out-File "output/README.txt" -Encoding UTF8
+        Copy-Item "SmartSteamEmu/Release/SmartSteamEmu.dll" "output/"
+        Copy-Item "SmartSteamEmu/x64/Release/SmartSteamEmu64.dll" "output/"
+        Copy-Item "SmartSteamEmu.ini" "output/" -ErrorAction SilentlyContinue
+        "Build completed: $(Get-Date)" | Out-File "output/README.txt"
     
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+    - name: Upload
+      uses: actions/upload-artifact@v4
       with:
         name: SmartSteamEmu-GC-Redirect
         path: output/
-        retention-days: 90
-    
-    - name: Create Release
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: v${{ github.run_number }}
-        name: SmartSteamEmu GC Redirect v${{ github.run_number }}
-        files: output/*
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
