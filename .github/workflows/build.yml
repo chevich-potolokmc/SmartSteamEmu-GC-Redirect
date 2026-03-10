@@ -18,12 +18,13 @@ jobs:
         git clone https://github.com/MAXBURAOT/SmartSteamEmu.git
     
     - name: Copy patch
+      shell: pwsh
       run: |
         if (Test-Path "SteamGameCoordinator_Redirect.h") {
-          Copy-Item "SteamGameCoordinator_Redirect.h" "SmartSteamEmu/src/" -Force
+          Copy-Item "SteamGameCoordinator_Redirect.h" "SmartSteamEmu\src\" -Force
           Write-Host "Patch copied"
         } else {
-          Write-Host "Patch file not found, building without patch"
+          Write-Host "Patch file not found, skipping"
         }
     
     - name: Setup MSBuild
