@@ -140,23 +140,18 @@ jobs:
         }
         
         # README
-        $readme = @"
-SmartSteamEmu with Game Coordinator Redirect
-Build: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
-
-Installation:
-1. Copy SmartSteamEmu.dll to game folder (replace existing)
-2. Edit SmartSteamEmu.ini and add:
-
-[GameCoordinator]
-EnableRedirect = 1
-ServerIP = 127.0.0.1
-ServerPort = 27016
-
-3. Start: node custom-gc/gc-server-v3.js
-4. Launch game via SSELauncher
-5. Check UI matchmaking!
-"@
+        $readme = "SmartSteamEmu with Game Coordinator Redirect`n"
+        $readme += "Build: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n`n"
+        $readme += "Installation:`n"
+        $readme += "1. Copy SmartSteamEmu.dll to game folder (replace existing)`n"
+        $readme += "2. Edit SmartSteamEmu.ini and add:`n`n"
+        $readme += "[GameCoordinator]`n"
+        $readme += "EnableRedirect = 1`n"
+        $readme += "ServerIP = 127.0.0.1`n"
+        $readme += "ServerPort = 27016`n`n"
+        $readme += "3. Start: node custom-gc/gc-server-v3.js`n"
+        $readme += "4. Launch game via SSELauncher`n"
+        $readme += "5. Check UI matchmaking!`n"
         $readme | Out-File "output\README.txt" -Encoding UTF8
         
         Write-Host ""
