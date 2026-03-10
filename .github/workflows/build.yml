@@ -109,25 +109,22 @@ jobs:
         }
         
         # Создаем README
-        @"
-SmartSteamEmu with Game Coordinator Redirect
-Build completed: $(Get-Date)
-
-Files:
-- SmartSteamEmu.dll (x86)
-- SmartSteamEmu64.dll (x64)
-- SmartSteamEmu.ini (config)
-
-Installation:
-1. Copy SmartSteamEmu.dll to game folder
-2. Edit SmartSteamEmu.ini:
-   [GameCoordinator]
-   EnableRedirect = 1
-   ServerIP = 127.0.0.1
-   ServerPort = 27016
-3. Run custom GC server
-4. Launch game
-"@ | Out-File "output/README.txt"
+        $readmeContent = "SmartSteamEmu with Game Coordinator Redirect`n"
+        $readmeContent += "Build completed: $(Get-Date)`n`n"
+        $readmeContent += "Files:`n"
+        $readmeContent += "- SmartSteamEmu.dll (x86)`n"
+        $readmeContent += "- SmartSteamEmu64.dll (x64)`n"
+        $readmeContent += "- SmartSteamEmu.ini (config)`n`n"
+        $readmeContent += "Installation:`n"
+        $readmeContent += "1. Copy SmartSteamEmu.dll to game folder`n"
+        $readmeContent += "2. Edit SmartSteamEmu.ini:`n"
+        $readmeContent += "   [GameCoordinator]`n"
+        $readmeContent += "   EnableRedirect = 1`n"
+        $readmeContent += "   ServerIP = 127.0.0.1`n"
+        $readmeContent += "   ServerPort = 27016`n"
+        $readmeContent += "3. Run custom GC server`n"
+        $readmeContent += "4. Launch game`n"
+        $readmeContent | Out-File "output/README.txt"
         
         Write-Host ""
         Write-Host "📦 Содержимое output:"
