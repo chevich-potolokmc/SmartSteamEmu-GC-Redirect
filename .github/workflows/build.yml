@@ -41,24 +41,97 @@ jobs:
         Write-Host "📄 Проверка файла:"
         Get-ChildItem SmartSteamEmu -Recurse -Filter "SteamGameCoordinator_Redirect.h" | Select-Object FullName
     
+    - name: Find solution file
+      run: |
+        Write-Host "🔍 Поиск .sln файла..."
+        Get-ChildItem SmartSteamEmu -Recurse -Filter "*.sln" | Select-Object FullName, Name
+        
+        Write-Host ""
+        Write-Host "🔍 Поиск .vcxproj файлов..."
+        Get-ChildItem SmartSteamEmu -Recurse -Filter "*.vcxproj" | Select-Object FullName, Name
+    
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
     
     - name: Build x86
-      working-directory: SmartSteamEmu
-      run: msbuild SmartSteamEmu.sln /p:Configuration=Release /p:Platform=Win32 /m
+      run: |
+        $slnFile = Get-ChildItem SmartSteamEmu -Recurse -Filter "*.sln" | Select-Object -First 1
+        if ($slnFile) {
+          Write-Host "✅ Найден: $($slnFile.FullName)"
+          msbuild $slnFile.FullName /p:Configuration=Release /p:Platform=Win32 /m
+        } else {
+          Write-Host "❌ .sln файл не найден!"
+          exit 1
+        }
     
     - name: Build x64
-      working-directory: SmartSteamEmu
-      run: msbuild SmartSteamEmu.sln /p:Configuration=Release /p:Platform=x64 /m
+      run: |
+        $slnFile = Get-ChildItem SmartSteamEmu -Recurse -Filter "*.sln" | Select-Object -First 1
+        if ($slnFile) {
+          Write-Host "✅ Найден: $($slnFile.FullName)"
+          msbuild $slnFile.FullName /p:Configuration=Release /p:Platform=x64 /m
+        } else {
+          Write-Host "❌ .sln файл не найден!"
+          exit 1
+        }
     
     - name: Package
       run: |
         New-Item -ItemType Directory -Path "output" -Force
-        Copy-Item "SmartSteamEmu/Release/SmartSteamEmu.dll" "output/"
-        Copy-Item "SmartSteamEmu/x64/Release/SmartSteamEmu64.dll" "output/"
-        Copy-Item "SmartSteamEmu.ini" "output/" -ErrorAction SilentlyContinue
-        "Build completed: $(Get-Date)" | Out-File "output/README.txt"
+        
+        Write-Host "🔍 Поиск скомпилированных DLL..."
+        
+        # Ищем x86 DLL
+        $dll32 = Get-ChildItem SmartSteamEmu -Recurse -Filter "SmartSteamEmu.dll" | Where-Object { $_.Directory.Name -eq "Release" } | Select-Object -First 1
+        if ($dll32) {
+          Write-Host "✅ x86 DLL: $($dll32.FullName)"
+          Copy-Item $dll32.FullName "output/SmartSteamEmu.dll"
+        } else {
+          Write-Host "⚠️ x86 DLL не найдена"
+        }
+        
+        # Ищем x64 DLL
+        $dll64 = Get-ChildItem SmartSteamEmu -Recurse -Filter "SmartSteamEmu.dll" | Where-Object { $_.Directory.Name -match "x64.*Release" } | Select-Object -First 1
+        if (-not $dll64) {
+          $dll64 = Get-ChildItem SmartSteamEmu -Recurse -Filter "SmartSteamEmu64.dll" | Select-Object -First 1
+        }
+        if ($dll64) {
+          Write-Host "✅ x64 DLL: $($dll64.FullName)"
+          Copy-Item $dll64.FullName "output/SmartSteamEmu64.dll"
+        } else {
+          Write-Host "⚠️ x64 DLL не найдена"
+        }
+        
+        # Копируем конфиг
+        if (Test-Path "SmartSteamEmu.ini") {
+          Copy-Item "SmartSteamEmu.ini" "output/"
+          Write-Host "✅ SmartSteamEmu.ini скопирован"
+        }
+        
+        # Создаем README
+        @"
+SmartSteamEmu with Game Coordinator Redirect
+Build completed: $(Get-Date)
+
+Files:
+- SmartSteamEmu.dll (x86)
+- SmartSteamEmu64.dll (x64)
+- SmartSteamEmu.ini (config)
+
+Installation:
+1. Copy SmartSteamEmu.dll to game folder
+2. Edit SmartSteamEmu.ini:
+   [GameCoordinator]
+   EnableRedirect = 1
+   ServerIP = 127.0.0.1
+   ServerPort = 27016
+3. Run custom GC server
+4. Launch game
+"@ | Out-File "output/README.txt"
+        
+        Write-Host ""
+        Write-Host "📦 Содержимое output:"
+        Get-ChildItem output | Select-Object Name, Length
     
     - name: Upload
       uses: actions/upload-artifact@v4
