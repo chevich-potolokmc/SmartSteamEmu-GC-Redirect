@@ -1,0 +1,47 @@
+name: Build SmartSteamEmu
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Clone SmartSteamEmu
+      run: |
+        git clone https://github.com/MAXBURAOT/SmartSteamEmu.git
+    
+    - name: Copy patch
+      run: |
+        Copy-Item "SteamGameCoordinator_Redirect.h" "SmartSteamEmu/src/" -Force
+    
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+    
+    - name: Build x86
+      working-directory: SmartSteamEmu
+      run: msbuild SmartSteamEmu.sln /p:Configuration=Release /p:Platform=Win32 /m
+    
+    - name: Build x64
+      working-directory: SmartSteamEmu
+      run: msbuild SmartSteamEmu.sln /p:Configuration=Release /p:Platform=x64 /m
+    
+    - name: Package
+      run: |
+        New-Item -ItemType Directory -Path "output" -Force
+        Copy-Item "SmartSteamEmu/Release/SmartSteamEmu.dll" "output/"
+        Copy-Item "SmartSteamEmu/x64/Release/SmartSteamEmu64.dll" "output/"
+        Copy-Item "SmartSteamEmu.ini" "output/" -ErrorAction SilentlyContinue
+        "Build completed: $(Get-Date)" | Out-File "output/README.txt"
+    
+    - name: Upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: SmartSteamEmu-GC-Redirect
+        path: output/
