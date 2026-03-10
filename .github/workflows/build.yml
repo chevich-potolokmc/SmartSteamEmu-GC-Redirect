@@ -16,11 +16,30 @@ jobs:
     - name: Clone SmartSteamEmu
       run: |
         git clone https://github.com/MAXBURAOT/SmartSteamEmu.git
+        Write-Host "📂 Структура репозитория:"
+        Get-ChildItem SmartSteamEmu -Recurse -Directory -Depth 2 | Select-Object FullName
     
     - name: Copy patch
       run: |
-        Copy-Item "SteamGameCoordinator_Redirect.h" "SmartSteamEmu\src\" -Force
-        Write-Host "Patch copied to SmartSteamEmu\src\"
+        Write-Host "🔍 Поиск директории для патча..."
+        
+        # Ищем где находятся исходники
+        $srcDirs = Get-ChildItem SmartSteamEmu -Recurse -Directory -Filter "src" -ErrorAction SilentlyContinue
+        
+        if ($srcDirs) {
+          $targetDir = $srcDirs[0].FullName
+          Write-Host "✅ Найдена директория: $targetDir"
+          Copy-Item "SteamGameCoordinator_Redirect.h" "$targetDir\" -Force
+          Write-Host "✅ Patch скопирован в $targetDir"
+        } else {
+          # Если нет src, копируем в корень SmartSteamEmu
+          Write-Host "⚠️ Директория src не найдена, копируем в корень"
+          Copy-Item "SteamGameCoordinator_Redirect.h" "SmartSteamEmu\" -Force
+          Write-Host "✅ Patch скопирован в SmartSteamEmu\"
+        }
+        
+        Write-Host "📄 Проверка файла:"
+        Get-ChildItem SmartSteamEmu -Recurse -Filter "SteamGameCoordinator_Redirect.h" | Select-Object FullName
     
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
