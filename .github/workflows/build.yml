@@ -23,7 +23,6 @@ jobs:
       run: |
         Write-Host "🔍 Поиск директории для патча..."
         
-        # Ищем где находятся исходники
         $srcDirs = Get-ChildItem SmartSteamEmu -Recurse -Directory -Filter "src" -ErrorAction SilentlyContinue
         
         if ($srcDirs) {
@@ -32,7 +31,6 @@ jobs:
           Copy-Item "SteamGameCoordinator_Redirect.h" "$targetDir\" -Force
           Write-Host "✅ Patch скопирован в $targetDir"
         } else {
-          # Если нет src, копируем в корень SmartSteamEmu
           Write-Host "⚠️ Директория src не найдена, копируем в корень"
           Copy-Item "SteamGameCoordinator_Redirect.h" "SmartSteamEmu\" -Force
           Write-Host "✅ Patch скопирован в SmartSteamEmu\"
@@ -41,109 +39,108 @@ jobs:
         Write-Host "📄 Проверка файла:"
         Get-ChildItem SmartSteamEmu -Recurse -Filter "SteamGameCoordinator_Redirect.h" | Select-Object FullName
     
-    - name: Find and analyze solution
+    - name: Setup .NET Framework
       run: |
-        Write-Host "🔍 Поиск .sln файла..."
+        Write-Host "📦 Установка .NET Framework 4.8 Developer Pack..."
+        $url = "https://download.visualstudio.microsoft.com/download/pr/014120d7-d689-4305-befd-3cb711108212/0fd66638cde16859462a6243a4629a50/ndp48-devpack-enu.exe"
+        $output = "$env:TEMP\ndp48-devpack.exe"
+        
+        Write-Host "⬇️ Скачивание..."
+        Invoke-WebRequest -Uri $url -OutFile $output
+        
+        Write-Host "⚙️ Установка..."
+        Start-Process -FilePath $output -Args "/quiet /norestart" -Wait
+        
+        Write-Host "✅ .NET Framework 4.8 установлен"
+    
+    - name: Find solution
+      id: find_sln
+      run: |
         $slnFile = Get-ChildItem SmartSteamEmu -Recurse -Filter "*.sln" | Select-Object -First 1
         
         if ($slnFile) {
           Write-Host "✅ Найден: $($slnFile.FullName)"
+          echo "SLN_PATH=$($slnFile.FullName)" >> $env:GITHUB_OUTPUT
+          
           Write-Host ""
-          Write-Host "� Содержимое .sln файла:"
-          Get-Content $slnFile.FullName | Select-String "Release|Debug|Win32|x64|x86|Platform" | ForEach-Object { Write-Host $_ }
+          Write-Host "📄 Анализ конфигураций:"
+          $content = Get-Content $slnFile.FullName -Raw
+          if ($content -match "Release\|") {
+            Write-Host "✅ Найдены Release конфигурации"
+          }
         } else {
           Write-Host "❌ .sln файл не найден!"
-        }
-        
-        Write-Host ""
-        Write-Host "🔍 Поиск .vcxproj файлов..."
-        Get-ChildItem SmartSteamEmu -Recurse -Filter "*.vcxproj" | ForEach-Object {
-          Write-Host "  - $($_.FullName)"
+          exit 1
         }
     
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
     
-    - name: Build
+    - name: Restore NuGet packages
       run: |
-        $slnFile = Get-ChildItem SmartSteamEmu -Recurse -Filter "*.sln" | Select-Object -First 1
+        $slnPath = "${{ steps.find_sln.outputs.SLN_PATH }}"
+        Write-Host "📦 Восстановление NuGet пакетов..."
+        nuget restore "$slnPath"
+    
+    - name: Build Release
+      run: |
+        $slnPath = "${{ steps.find_sln.outputs.SLN_PATH }}"
+        Write-Host "🔨 Компиляция Release..."
+        msbuild "$slnPath" /p:Configuration=Release /m /v:minimal /nologo
         
-        if (-not $slnFile) {
-          Write-Host "❌ .sln файл не найден!"
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "❌ Ошибка компиляции"
           exit 1
         }
         
-        Write-Host "🔨 Компиляция: $($slnFile.FullName)"
-        Write-Host ""
-        
-        # Пробуем разные конфигурации
-        $configs = @(
-          @{Config="Release"; Platform="Win32"},
-          @{Config="Release"; Platform="x86"},
-          @{Config="Release"; Platform="Any CPU"}
-        )
-        
-        $success = $false
-        foreach ($cfg in $configs) {
-          Write-Host "⚙️ Попытка: Configuration=$($cfg.Config), Platform=$($cfg.Platform)"
-          try {
-            msbuild $slnFile.FullName /p:Configuration=$($cfg.Config) /p:Platform=$($cfg.Platform) /m /v:minimal
-            if ($LASTEXITCODE -eq 0) {
-              Write-Host "✅ Успешно!"
-              $success = $true
-              break
-            }
-          } catch {
-            Write-Host "❌ Не удалось"
-          }
-          Write-Host ""
-        }
-        
-        if (-not $success) {
-          Write-Host "⚠️ Пробуем без указания Platform..."
-          msbuild $slnFile.FullName /p:Configuration=Release /m /v:minimal
+        Write-Host "✅ Компиляция успешна"
+    
+    - name: Find compiled DLLs
+      run: |
+        Write-Host "🔍 Поиск скомпилированных DLL..."
+        Get-ChildItem SmartSteamEmu -Recurse -Filter "*.dll" | Where-Object { 
+          $_.Name -like "SmartSteamEmu*" -and $_.Directory.Name -match "Release|Bin|Output"
+        } | ForEach-Object {
+          Write-Host "  ✅ $($_.FullName)"
         }
     
     - name: Package
       run: |
         New-Item -ItemType Directory -Path "output" -Force
         
-        Write-Host "🔍 Поиск скомпилированных DLL..."
+        Write-Host "� Упаковка DLL файлов..."
         
-        # Ищем x86 DLL
-        $dll32 = Get-ChildItem SmartSteamEmu -Recurse -Filter "SmartSteamEmu.dll" | Where-Object { $_.Directory.Name -eq "Release" } | Select-Object -First 1
-        if ($dll32) {
-          Write-Host "✅ x86 DLL: $($dll32.FullName)"
-          Copy-Item $dll32.FullName "output/SmartSteamEmu.dll"
+        $dlls = Get-ChildItem SmartSteamEmu -Recurse -Filter "*.dll" | Where-Object { 
+          $_.Name -like "SmartSteamEmu*" -and $_.Directory.Name -match "Release|Bin|Output"
+        }
+        
+        if ($dlls) {
+          foreach ($dll in $dlls) {
+            $destName = $dll.Name
+            if ($dll.Directory.FullName -match "x64") {
+              $destName = "SmartSteamEmu64.dll"
+            } elseif ($dll.Directory.FullName -match "x86|Win32") {
+              $destName = "SmartSteamEmu.dll"
+            }
+            
+            Copy-Item $dll.FullName "output\$destName" -Force
+            Write-Host "  ✅ $destName"
+          }
         } else {
-          Write-Host "⚠️ x86 DLL не найдена"
+          Write-Host "⚠️ DLL не найдены, копируем всё что есть..."
+          Get-ChildItem SmartSteamEmu -Recurse -Filter "SmartSteamEmu*.dll" | ForEach-Object {
+            Copy-Item $_.FullName "output\" -Force
+            Write-Host "  ✅ $($_.Name)"
+          }
         }
         
-        # Ищем x64 DLL
-        $dll64 = Get-ChildItem SmartSteamEmu -Recurse -Filter "SmartSteamEmu.dll" | Where-Object { $_.Directory.Name -match "x64.*Release" } | Select-Object -First 1
-        if (-not $dll64) {
-          $dll64 = Get-ChildItem SmartSteamEmu -Recurse -Filter "SmartSteamEmu64.dll" | Select-Object -First 1
-        }
-        if ($dll64) {
-          Write-Host "✅ x64 DLL: $($dll64.FullName)"
-          Copy-Item $dll64.FullName "output/SmartSteamEmu64.dll"
-        } else {
-          Write-Host "⚠️ x64 DLL не найдена"
-        }
-        
-        # Копируем конфиг
         if (Test-Path "SmartSteamEmu.ini") {
-          Copy-Item "SmartSteamEmu.ini" "output/"
-          Write-Host "✅ SmartSteamEmu.ini скопирован"
+          Copy-Item "SmartSteamEmu.ini" "output\"
+          Write-Host "  ✅ SmartSteamEmu.ini"
         }
         
-        # Создаем README
         $readmeContent = "SmartSteamEmu with Game Coordinator Redirect`n"
         $readmeContent += "Build completed: $(Get-Date)`n`n"
-        $readmeContent += "Files:`n"
-        $readmeContent += "- SmartSteamEmu.dll (x86)`n"
-        $readmeContent += "- SmartSteamEmu64.dll (x64)`n"
-        $readmeContent += "- SmartSteamEmu.ini (config)`n`n"
         $readmeContent += "Installation:`n"
         $readmeContent += "1. Copy SmartSteamEmu.dll to game folder`n"
         $readmeContent += "2. Edit SmartSteamEmu.ini:`n"
@@ -153,7 +150,7 @@ jobs:
         $readmeContent += "   ServerPort = 27016`n"
         $readmeContent += "3. Run custom GC server`n"
         $readmeContent += "4. Launch game`n"
-        $readmeContent | Out-File "output/README.txt"
+        $readmeContent | Out-File "output\README.txt"
         
         Write-Host ""
         Write-Host "📦 Содержимое output:"
